@@ -20,7 +20,7 @@ with st.sidebar:
 def analyze_ppt(uploaded_file, api_key):
     genai.configure(api_key=api_key)
     
-    # 修复点：使用 Flash 模型，且缩进已完美对齐
+    # 修复点：使用 Flash 模型，且缩进已完美对齐 (4个空格)
     model = genai.GenerativeModel(
         'gemini-1.5-flash',
         generation_config={"response_mime_type": "application/json"}
