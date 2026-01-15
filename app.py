@@ -22,8 +22,8 @@ def analyze_ppt(uploaded_file, api_key):
     
     # 使用支持 JSON Mode 的模型
 model = genai.GenerativeModel(    # 第 24 行
-        'gemini-1.5-pro',
-        generation_config={"response_mime_type": "application/json"}
+    'gemini-1.5-pro',
+    generation_config={"response_mime_type": "application/json"}
     )
 
     prs = Presentation(uploaded_file) # 第 29 行（这里要和上面的 model 对齐！）
@@ -128,4 +128,5 @@ if 'results' in st.session_state:
 elif uploaded_file and not api_key:
 
     st.warning("请在左侧侧边栏输入 API Key 以继续。")
+
 
