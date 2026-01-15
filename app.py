@@ -6,18 +6,35 @@ import io
 from PIL import Image
 import time
 
-# --- 页面配置 ---
-st.set_page_config(page_title="智讲 SmartPresenter Pro", layout="wide", page_icon="🎤")
+# --- 页面全局配置 ---
+st.set_page_config(
+    page_title="智讲 SmartPresenter Pro",
+    layout="wide",
+    page_icon="👨‍💻",
+    initial_sidebar_state="expanded"
+)
 
-# --- 侧边栏 ---
+# --- 架构师工具箱：智能配速逻辑 ---
+def get_model_delay(model_name):
+    """
+    根据模型类型决定'冷却时间'，避免触发 429 报错。
+    Flash: ~15 RPM -> 安全间隔 4秒
+    Pro: ~2 RPM -> 安全间隔 32秒
+    """
+    if "flash" in model_name.lower():
+        return 4  # Flash 模型：快
+    else:
+        return 32 # Pro 模型：慢 (贵族模型)
+
+# --- 侧边栏配置 ---
 with st.sidebar:
-    st.title("🎙️ 智讲 Pro")
-    st.caption("自动重试 · 稳定版")
+    st.title("👨‍💻 智讲 Pro")
+    st.caption("架构师版：流式渲染 + 智能配速")
     st.divider()
     
     api_key = st.text_input("🔑 Google API Key", type="password")
     
-    # 自动获取可用模型
+    # 1. 动态加载模型
     available_models = []
     if api_key:
         try:
@@ -26,147 +43,161 @@ with st.sidebar:
             for m in all_models:
                 if 'generateContent' in m.supported_generation_methods:
                     available_models.append(m.name)
-            st.success(f"✅ 已加载 {len(available_models)} 个可用模型")
+            st.success(f"✅ 已连接 Google 大脑 (可用模型: {len(available_models)})")
         except Exception as e:
-            st.error(f"❌ Key 验证失败: {e}")
+            st.error(f"❌ Key 无效")
 
-    # 模型选择
+    # 2. 模型选择器
+    selected_model = "models/gemini-1.5-flash" # 默认值
     if available_models:
+        # 优先推荐 Flash，因为 Pro 实在是太慢了
         default_index = 0
-        # 优先寻找 gemini-1.5-flash (最快且配额较高)
         for i, name in enumerate(available_models):
             if "flash" in name and "1.5" in name:
                 default_index = i
                 break
         
         selected_model = st.selectbox(
-            "👇 选择模型:",
+            "👇 选择思考引擎 (推荐 Flash):",
             available_models,
             index=default_index
         )
-    else:
-        selected_model = st.selectbox("模型列表:", ["models/gemini-1.5-flash"])
-
-    st.info("💡 机制说明：遇到限流会自动等待并重试，绝不跳过任何一页。")
-
-# --- 核心逻辑 ---
-def analyze_ppt(uploaded_file, api_key, model_name):
-    genai.configure(api_key=api_key)
-    
-    model = genai.GenerativeModel(
-        model_name,
-        generation_config={"response_mime_type": "application/json"}
-    )
-
-    prs = Presentation(uploaded_file)
-    results = []
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    total_slides = len(prs.slides)
-
-    for i, slide in enumerate(prs.slides):
-        status_text.text(f"🚀 正在死磕第 {i+1}/{total_slides} 页...")
-        progress_bar.progress((i) / total_slides)
-
-        # 1. 准备内容
-        text_runs = []
-        for shape in slide.shapes:
-            if hasattr(shape, "text"):
-                text_runs.append(shape.text)
-        slide_text = "\n".join(text_runs)
-
-        slide_image = None
-        for shape in slide.shapes:
-            if shape.shape_type == 13: 
-                try:
-                    image_stream = io.BytesIO(shape.image.blob)
-                    slide_image = Image.open(image_stream)
-                    break 
-                except:
-                    pass
         
-        # 2. 构造 Prompt
-        prompt = """
-        Analyze this slide. Output valid JSON only:
-        {
-            "visual_summary": "1 sentence description",
-            "scripts": {
-                "beginner": "Script for beginner",
-                "standard": "Script for business",
-                "expert": "Script for expert"
-            },
-            "knowledge_extension": {
-                "entity": "Keyword",
-                "trivia": "Did you know fact"
-            }
-        }
-        """
-        
-        inputs = [prompt, f"Text: {slide_text}"]
-        if slide_image:
-            inputs.append(slide_image)
+        # 显示配速提示
+        delay_time = get_model_delay(selected_model)
+        if delay_time > 10:
+            st.warning(f"⚠️ 您选择了高精度模型 (Pro)。\n受限于 Google 免费配额，每页分析需冷却 {delay_time} 秒。建议切换回 Flash 以获得 10 倍速度。")
         else:
-            inputs.append("(No image)")
+            st.info(f"⚡ 已激活高速模式 (Flash)。每页冷却 {delay_time} 秒。")
 
-        # 3. 核心：重试循环 (Retry Loop)
-        max_retries = 5  # 最多重试5次
-        retry_count = 0
-        success = False
-        
-        while not success and retry_count < max_retries:
+# --- 核心处理逻辑 ---
+def analyze_slide(model, slide, index):
+    """单独处理一页 Slide 的原子函数"""
+    
+    # 1. 提取文字
+    text_runs = []
+    for shape in slide.shapes:
+        if hasattr(shape, "text"):
+            text_runs.append(shape.text)
+    slide_text = "\n".join(text_runs)
+
+    # 2. 提取图片
+    slide_image = None
+    for shape in slide.shapes:
+        if shape.shape_type == 13: 
             try:
-                response = model.generate_content(inputs)
-                text = response.text.strip()
-                if text.startswith("```json"): text = text.replace("```json", "").replace("```", "")
-                data = json.loads(text)
-                data['index'] = i + 1
-                results.append(data)
-                success = True # 成功了！退出循环
-                
-            except Exception as e:
-                err_msg = str(e)
-                if "429" in err_msg:
-                    wait_time = 10 + (retry_count * 5) # 第一次等10秒，第二次15秒...
-                    status_text.warning(f"⚠️ 第 {i+1} 页太快了 (429)，休息 {wait_time} 秒后重试 ({retry_count+1}/5)...")
-                    time.sleep(wait_time)
-                    retry_count += 1
-                else:
-                    st.error(f"❌ 第 {i+1} 页遇到非限流错误: {e}")
-                    # 非限流错误（如图片太大）则跳过，避免死循环
-                    break 
+                image_stream = io.BytesIO(shape.image.blob)
+                slide_image = Image.open(image_stream)
+                break 
+            except:
+                pass
 
-        # 每次成功后，稍微停顿一下，给 Google 服务器喘口气
-        time.sleep(2)
-                
-    progress_bar.progress(1.0)
-    status_text.success("🎉 所有页面分析完成！")
-    return results
+    # 3. 构造 Prompt
+    prompt = """
+    Analyze this presentation slide. Output strictly valid JSON.
+    Do not use Markdown formatting (no ```json).
+    JSON Structure:
+    {
+        "visual_summary": "1 sentence describing the visual layout",
+        "scripts": {
+            "beginner": "Speech script for non-experts (warm tone)",
+            "standard": "Speech script for business (professional tone)",
+            "expert": "Speech script for tech experts (deep tone)"
+        },
+        "knowledge_extension": {
+            "entity": "Key technical term from slide",
+            "trivia": "A surprising fact about this entity"
+        }
+    }
+    """
+    
+    inputs = [prompt, f"Slide Content: {slide_text}"]
+    if slide_image:
+        inputs.append(slide_image)
+    
+    # 4. 调用 AI
+    response = model.generate_content(inputs)
+    
+    # 5. 清洗数据
+    clean_text = response.text.replace("```json", "").replace("```", "").strip()
+    data = json.loads(clean_text)
+    data['index'] = index
+    return data
 
-# --- UI ---
+# --- 主界面 ---
+st.title("🎙️ 智讲 SmartPresenter")
+st.markdown("### 您的 AI 演示架构师：实时流式生成")
+
 uploaded_file = st.file_uploader("📂 上传 PPTX 文件", type=['pptx'])
 
-if uploaded_file and api_key and available_models:
-    if st.button("🚀 开始分析 (死磕模式)"):
-        with st.spinner("AI 正在逐页攻克..."):
-            results = analyze_ppt(uploaded_file, api_key, selected_model)
-            st.session_state['results'] = results
+# 初始化 Session State (用于存储已生成的结果)
+if 'generated_slides' not in st.session_state:
+    st.session_state['generated_slides'] = []
 
-if 'results' in st.session_state and st.session_state['results']:
+if uploaded_file and api_key and available_models:
+    if st.button("🚀 启动流水线 (Start Pipeline)", type="primary"):
+        st.session_state['generated_slides'] = [] # 清空旧记录
+        
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(selected_model)
+        prs = Presentation(uploaded_file)
+        total_slides = len(prs.slides)
+        
+        # 进度容器
+        progress_bar = st.progress(0)
+        status_box = st.empty()
+        result_area = st.container() # 创建一个容器专门放结果
+        
+        delay_time = get_model_delay(selected_model)
+
+        for i, slide in enumerate(prs.slides):
+            current_idx = i + 1
+            
+            # --- 1. 状态更新 ---
+            status_box.info(f"🧠 正在深度解析第 {current_idx} / {total_slides} 页...")
+            progress_bar.progress(i / total_slides)
+            
+            try:
+                # --- 2. 执行分析 ---
+                slide_data = analyze_slide(model, slide, current_idx)
+                
+                # --- 3. 存入状态并立即渲染 ---
+                st.session_state['generated_slides'].append(slide_data)
+                
+                with result_area:
+                    # 动态渲染刚刚生成的那一页
+                    with st.expander(f"📄 第 {current_idx} 页 | {slide_data.get('visual_summary')}", expanded=True):
+                        c1, c2 = st.columns([2, 1])
+                        with c1:
+                            st.markdown("#### 🎙️ 演讲脚本")
+                            tabs = st.tabs(["🟢 小白", "🔵 标准", "🔴 专家"])
+                            tabs[0].write(slide_data['scripts']['beginner'])
+                            tabs[1].write(slide_data['scripts']['standard'])
+                            tabs[2].write(slide_data['scripts']['expert'])
+                        with c2:
+                            st.markdown("#### 🧠 知识点")
+                            ext = slide_data['knowledge_extension']
+                            st.info(f"**{ext['entity']}**\n\n{ext['trivia']}")
+
+                # --- 4. 智能配速 (Smart Throttling) ---
+                # 如果不是最后一页，就需要休息
+                if i < total_slides - 1:
+                    for t in range(delay_time, 0, -1):
+                        status_box.warning(f"⏳ 正在遵守 API 限速规则，冷却中... {t}秒 (为了不被 Google 封锁)")
+                        time.sleep(1)
+                        
+            except Exception as e:
+                st.error(f"第 {current_idx} 页解析失败: {e}")
+                time.sleep(5) # 出错也休息一下
+
+        status_box.success("🎉 全部分析完成！")
+        progress_bar.progress(1.0)
+
+# --- 历史结果回显 (防止刷新丢失) ---
+elif st.session_state['generated_slides']:
     st.divider()
-    st.success(f"✅ 成功生成 {len(st.session_state['results'])} 页讲稿！")
-    
-    for slide in st.session_state['results']:
-        with st.expander(f"📄 第 {slide.get('index', '?')} 页 | {slide.get('visual_summary', '无摘要')}", expanded=False):
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                scripts = slide.get('scripts', {})
-                st.markdown("### 🎙️ 演讲稿")
-                st.markdown(f"**普通模式:** {scripts.get('standard', 'N/A')}")
-                st.info(f"**小白模式:** {scripts.get('beginner', 'N/A')}")
-            with c2:
-                ext = slide.get('knowledge_extension', {})
-                st.markdown("### 🧠 知识点")
-                st.warning(f"**{ext.get('entity', 'N/A')}**\n\n{ext.get('trivia', 'N/A')}")
-elif 'results' in st.session_state and not st.session_state['results']:
-    st.warning("⚠️ 分析结束，但没有生成任何结果。这通常是因为所有页面都重试失败了，请检查 Key 或更换模型。")
+    st.caption("📜 历史生成记录")
+    for slide in st.session_state['generated_slides']:
+        with st.expander(f"📄 第 {slide['index']} 页 | {slide.get('visual_summary')}", expanded=False):
+             # 简化的回显 UI
+             st.write(f"**标准话术:** {slide['scripts']['standard']}")
