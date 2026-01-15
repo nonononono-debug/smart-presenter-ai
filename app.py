@@ -14,24 +14,24 @@ with st.sidebar:
     api_key = st.text_input("请输入 Google API Key", type="password")
     st.markdown("[获取 API Key](https://aistudio.google.com/app/apikey)")
     st.divider()
-    st.info("架构师提示：这是一个基于 Google Gemini 1.5 的 PPT 认知重构系统。")
+    st.info("架构师提示：这是一个基于 Google Gemini 1.5 Flash 的高并发认知重构系统。")
 
 # --- 核心逻辑函数 ---
 def analyze_ppt(uploaded_file, api_key):
     genai.configure(api_key=api_key)
     
-    # 使用支持 JSON Mode 的模型
-   model = genai.GenerativeModel(
-        'gemini-1.5-flash', 
+    # 使用速度更快、配额更高的 Flash 模型
+    model = genai.GenerativeModel(
+        'gemini-1.5-flash',
         generation_config={"response_mime_type": "application/json"}
     )
+
     prs = Presentation(uploaded_file)
     results = []
     
     progress_bar = st.progress(0)
     total_slides = len(prs.slides)
 
-    # 循环遍历每一页 (注意：下面的代码都必须有缩进)
     for i, slide in enumerate(prs.slides):
         # 更新进度条
         progress_bar.progress((i + 1) / total_slides, text=f"正在分析第 {i+1}/{total_slides} 页...")
@@ -127,4 +127,3 @@ if 'results' in st.session_state:
 
 elif uploaded_file and not api_key:
     st.warning("请在左侧侧边栏输入 API Key 以继续。")
-
