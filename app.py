@@ -11,41 +11,53 @@ st.set_page_config(page_title="智讲 SmartPresenter Pro", layout="wide", page_i
 # --- 侧边栏 ---
 with st.sidebar:
     st.title("🎙️ 智讲 Pro")
-    st.caption("API 连接诊断版")
-    
+    st.caption("自适应模型加载版")
     st.divider()
     
-    # 1. API Key 输入区
+    # 1. 输入 API Key
     api_key = st.text_input("🔑 Google API Key", type="password")
     
-    # 2. 连接测试按钮 (新增功能)
+    # 2. 自动获取可用模型 (核心修复)
+    available_models = []
     if api_key:
-        if st.button("🔌 点击测试 Key 是否有效"):
-            try:
-                genai.configure(api_key=api_key)
-                # 尝试列出模型，如果 Key 是坏的，这里会直接报错
-                models = list(genai.list_models())
-                st.success(f"✅ 连接成功！您的 Key 有效。")
-                st.caption(f"可用模型数量: {len(models)}")
-            except Exception as e:
-                st.error(f"❌ 连接失败！Key 无效。")
-                st.error(f"Google 返回报错: {e}")
-                st.info("请务必去 aistudio.google.com 创建一个【新项目】的 Key。")
+        try:
+            genai.configure(api_key=api_key)
+            # 动态向 Google 询问有哪些模型可用
+            all_models = genai.list_models()
+            for m in all_models:
+                # 只保留支持内容生成的模型
+                if 'generateContent' in m.supported_generation_methods:
+                    available_models.append(m.name)
+            st.success(f"✅ 已加载 {len(available_models)} 个可用模型")
+        except Exception as e:
+            st.error(f"❌ Key 验证失败: {e}")
 
-    st.divider()
-
-    # 3. 模型选择
-    st.markdown("### 🤖 模型选择")
-    selected_model = st.selectbox(
-        "选择模型：",
-        ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"],
-        index=0
-    )
+    # 3. 模型选择下拉菜单
+    if available_models:
+        # 智能预选：优先找 flash 或 pro
+        default_index = 0
+        for i, name in enumerate(available_models):
+            if "flash" in name and "1.5" in name:
+                default_index = i
+                break
+        
+        selected_model = st.selectbox(
+            "👇 请选择一个模型 (Google 官方列表):",
+            available_models,
+            index=default_index
+        )
+    else:
+        # 兜底选项
+        selected_model = st.selectbox(
+            "模型列表 (请输入 Key 加载):",
+            ["models/gemini-1.5-flash", "models/gemini-pro"]
+        )
 
 # --- 核心逻辑 ---
 def analyze_ppt(uploaded_file, api_key, model_name):
     genai.configure(api_key=api_key)
     
+    # 直接使用列表中选中的真实名字，不再猜测
     model = genai.GenerativeModel(
         model_name,
         generation_config={"response_mime_type": "application/json"}
@@ -59,7 +71,7 @@ def analyze_ppt(uploaded_file, api_key, model_name):
     total_slides = len(prs.slides)
 
     for i, slide in enumerate(prs.slides):
-        status_text.text(f"🚀 [{model_name}] 正在分析第 {i+1}/{total_slides} 页...")
+        status_text.text(f"🚀 正在分析第 {i+1}/{total_slides} 页 | 使用引擎: {model_name}")
         progress_bar.progress((i + 1) / total_slides)
 
         # 提取文本
@@ -111,11 +123,11 @@ def analyze_ppt(uploaded_file, api_key, model_name):
             data['index'] = i + 1
             results.append(data)
         except Exception as e:
-            # 兼容旧模型不支持 JSON 的情况
-            if "gemini-pro" == model_name and "400" in str(e):
-                st.warning(f"第 {i+1} 页：旧版模型不支持 JSON 模式，请切换回 1.5-flash。")
+            # 如果选中的模型不支持 JSON，做个提示
+            if "400" in str(e) and "JSON" in str(e):
+                st.warning(f"第 {i+1} 页：当前模型 {model_name} 可能不支持 JSON 模式，建议换一个带 1.5 的模型。")
             else:
-                st.error(f"第 {i+1} 页分析出错: {e}")
+                st.error(f"第 {i+1} 页出错: {e}")
                 
     progress_bar.empty()
     status_text.empty()
@@ -124,20 +136,4 @@ def analyze_ppt(uploaded_file, api_key, model_name):
 # --- UI ---
 uploaded_file = st.file_uploader("📂 上传 PPTX 文件", type=['pptx'])
 
-if uploaded_file and api_key:
-    if st.button("🚀 开始分析"):
-        with st.spinner("AI 正在思考..."):
-            results = analyze_ppt(uploaded_file, api_key, selected_model)
-            st.session_state['results'] = results
-
-if 'results' in st.session_state:
-    st.success("✅ 分析完成！")
-    for slide in st.session_state['results']:
-        with st.expander(f"📄 第 {slide.get('index', '?')} 页 | {slide.get('visual_summary', '')}", expanded=(slide.get('index')==1)):
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                scripts = slide.get('scripts', {})
-                st.markdown(f"**普通模式：**\n{scripts.get('standard', 'N/A')}")
-            with c2:
-                ext = slide.get('knowledge_extension', {})
-                st.info(f"💡 **{ext.get('entity', 'N/A')}**: {ext.get('trivia', 'N/A')}")
+if uploaded_file and api_key and available_models:
