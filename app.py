@@ -26,16 +26,16 @@ model = genai.GenerativeModel(    # 第 24 行
     generation_config={"response_mime_type": "application/json"}
     )
 
-    prs = Presentation(uploaded_file) ）
-    results = []                      
-    progress_bar = st.progress(0)     
-    total_slides = len(prs.slides)
-    for i, slide in enumerate(prs.slides):
-        # 更新进度条
-        progress_bar.progress((i + 1) / total_slides, text=f"正在分析第 {i+1}/{total_slides} 页...")
+prs = Presentation(uploaded_file) ）
+results = []                      
+progress_bar = st.progress(0)     
+total_slides = len(prs.slides)
+for i, slide in enumerate(prs.slides):
+    # 更新进度条
+    progress_bar.progress((i + 1) / total_slides, text=f"正在分析第 {i+1}/{total_slides} 页...")
 
-        # 1. 提取文本
-        text_runs = []
+    # 1. 提取文本
+    text_runs = []
         for shape in slide.shapes:
             if hasattr(shape, "text"):
                 text_runs.append(shape.text)
@@ -126,6 +126,7 @@ if 'results' in st.session_state:
 elif uploaded_file and not api_key:
 
     st.warning("请在左侧侧边栏输入 API Key 以继续。")
+
 
 
 
