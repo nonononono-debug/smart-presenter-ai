@@ -26,7 +26,7 @@ model = genai.GenerativeModel(    # 第 24 行
     generation_config={"response_mime_type": "application/json"}
     )
 
-prs = Presentation(uploaded_file) ）
+prs = Presentation(uploaded_file) 
 results = []                      
 progress_bar = st.progress(0)     
 total_slides = len(prs.slides)
@@ -126,6 +126,7 @@ if 'results' in st.session_state:
 elif uploaded_file and not api_key:
 
     st.warning("请在左侧侧边栏输入 API Key 以继续。")
+
 
 
 
