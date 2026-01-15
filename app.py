@@ -137,3 +137,19 @@ def analyze_ppt(uploaded_file, api_key, model_name):
 uploaded_file = st.file_uploader("📂 上传 PPTX 文件", type=['pptx'])
 
 if uploaded_file and api_key and available_models:
+    if st.button("🚀 开始分析"):
+        with st.spinner("AI 正在思考..."):
+            results = analyze_ppt(uploaded_file, api_key, selected_model)
+            st.session_state['results'] = results
+
+if 'results' in st.session_state:
+    st.success("✅ 分析完成！")
+    for slide in st.session_state['results']:
+        with st.expander(f"📄 第 {slide.get('index', '?')} 页 | {slide.get('visual_summary', '')}", expanded=(slide.get('index')==1)):
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                scripts = slide.get('scripts', {})
+                st.markdown(f"**普通模式：**\n{scripts.get('standard', 'N/A')}")
+            with c2:
+                ext = slide.get('knowledge_extension', {})
+                st.info(f"💡 **{ext.get('entity', 'N/A')}**: {ext.get('trivia', 'N/A')}")
