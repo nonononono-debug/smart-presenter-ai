@@ -26,12 +26,10 @@ model = genai.GenerativeModel(    # 第 24 行
     generation_config={"response_mime_type": "application/json"}
     )
 
-    prs = Presentation(uploaded_file) # 第 29 行（这里要和上面的 model 对齐！）
-    results = []                      # 第 30 行（也要对齐）
-
-    progress_bar = st.progress(0)     # 第 32 行（也要对齐）
+    prs = Presentation(uploaded_file) ）
+    results = []                      
+    progress_bar = st.progress(0)     
     total_slides = len(prs.slides)
-
     for i, slide in enumerate(prs.slides):
         # 更新进度条
         progress_bar.progress((i + 1) / total_slides, text=f"正在分析第 {i+1}/{total_slides} 页...")
@@ -128,5 +126,6 @@ if 'results' in st.session_state:
 elif uploaded_file and not api_key:
 
     st.warning("请在左侧侧边栏输入 API Key 以继续。")
+
 
 
