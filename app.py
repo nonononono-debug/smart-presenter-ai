@@ -14,13 +14,13 @@ with st.sidebar:
     api_key = st.text_input("请输入 Google API Key", type="password")
     st.markdown("[获取 API Key](https://aistudio.google.com/app/apikey)")
     st.divider()
-    st.info("架构师提示：这是一个基于 Google Gemini 1.5 Flash 的高并发认知重构系统。")
+    st.info("架构师提示：已启用 Gemini 1.5 Flash 高速认知引擎。")
 
 # --- 核心逻辑函数 ---
 def analyze_ppt(uploaded_file, api_key):
     genai.configure(api_key=api_key)
     
-    # 使用速度更快、配额更高的 Flash 模型
+    # 修复点：使用 Flash 模型，且缩进已完美对齐
     model = genai.GenerativeModel(
         'gemini-1.5-flash',
         generation_config={"response_mime_type": "application/json"}
@@ -43,7 +43,7 @@ def analyze_ppt(uploaded_file, api_key):
                 text_runs.append(shape.text)
         slide_text = "\n".join(text_runs)
 
-        # 2. 尝试提取图片 (简化版)
+        # 2. 尝试提取图片
         slide_image = None
         for shape in slide.shapes:
             if shape.shape_type == 13: 
