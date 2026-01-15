@@ -11,37 +11,41 @@ st.set_page_config(page_title="智讲 SmartPresenter Pro", layout="wide", page_i
 # --- 侧边栏 ---
 with st.sidebar:
     st.title("🎙️ 智讲 Pro")
-    st.caption("全能模型切换版")
+    st.caption("API 连接诊断版")
     
     st.divider()
     
-    # === 关键升级：模型选择器 ===
-    st.markdown("### 🤖 模型选择 (Model)")
-    selected_model = st.selectbox(
-        "如果报错，请尝试切换模型：",
-        [
-            "gemini-1.5-flash",        # 默认：最新快速版
-            "gemini-1.5-flash-latest", # 备选：快速版别名
-            "gemini-1.5-pro",          # 备选：最强旗舰版
-            "gemini-1.5-pro-latest",   # 备选：旗舰版别名
-            "gemini-pro"               # 兜底：最稳定的旧版 (1.0)
-        ],
-        index=0
-    )
-    st.info(f"当前使用: {selected_model}")
+    # 1. API Key 输入区
+    api_key = st.text_input("🔑 Google API Key", type="password")
     
+    # 2. 连接测试按钮 (新增功能)
+    if api_key:
+        if st.button("🔌 点击测试 Key 是否有效"):
+            try:
+                genai.configure(api_key=api_key)
+                # 尝试列出模型，如果 Key 是坏的，这里会直接报错
+                models = list(genai.list_models())
+                st.success(f"✅ 连接成功！您的 Key 有效。")
+                st.caption(f"可用模型数量: {len(models)}")
+            except Exception as e:
+                st.error(f"❌ 连接失败！Key 无效。")
+                st.error(f"Google 返回报错: {e}")
+                st.info("请务必去 aistudio.google.com 创建一个【新项目】的 Key。")
+
     st.divider()
 
-    api_key = st.text_input("🔑 Google API Key", type="password")
-    if not api_key:
-        st.warning("请输入 Key 以继续")
-        st.markdown("[👉 获取免费 Key](https://aistudio.google.com/app/apikey)")
+    # 3. 模型选择
+    st.markdown("### 🤖 模型选择")
+    selected_model = st.selectbox(
+        "选择模型：",
+        ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"],
+        index=0
+    )
 
 # --- 核心逻辑 ---
 def analyze_ppt(uploaded_file, api_key, model_name):
     genai.configure(api_key=api_key)
     
-    # 使用用户选择的模型
     model = genai.GenerativeModel(
         model_name,
         generation_config={"response_mime_type": "application/json"}
@@ -58,14 +62,14 @@ def analyze_ppt(uploaded_file, api_key, model_name):
         status_text.text(f"🚀 [{model_name}] 正在分析第 {i+1}/{total_slides} 页...")
         progress_bar.progress((i + 1) / total_slides)
 
-        # 1. 提取文本
+        # 提取文本
         text_runs = []
         for shape in slide.shapes:
             if hasattr(shape, "text"):
                 text_runs.append(shape.text)
         slide_text = "\n".join(text_runs)
 
-        # 2. 提取图片
+        # 提取图片
         slide_image = None
         for shape in slide.shapes:
             if shape.shape_type == 13: 
@@ -76,7 +80,7 @@ def analyze_ppt(uploaded_file, api_key, model_name):
                 except:
                     pass
 
-        # 3. Prompt
+        # Prompt
         prompt = """
         Analyze this slide. Output valid JSON:
         {
@@ -101,16 +105,15 @@ def analyze_ppt(uploaded_file, api_key, model_name):
 
         try:
             response = model.generate_content(inputs)
-            # 清洗数据
             text = response.text.strip()
             if text.startswith("```json"): text = text.replace("```json", "").replace("```", "")
             data = json.loads(text)
             data['index'] = i + 1
             results.append(data)
         except Exception as e:
-            # 如果是 Pro 模型 (1.0) 不支持 JSON Mode，尝试纯文本兜底
+            # 兼容旧模型不支持 JSON 的情况
             if "gemini-pro" == model_name and "400" in str(e):
-                st.warning(f"第 {i+1} 页：旧版模型不支持 JSON 模式，跳过。建议使用 1.5 版本。")
+                st.warning(f"第 {i+1} 页：旧版模型不支持 JSON 模式，请切换回 1.5-flash。")
             else:
                 st.error(f"第 {i+1} 页分析出错: {e}")
                 
