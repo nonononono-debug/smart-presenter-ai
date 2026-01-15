@@ -4,6 +4,7 @@ from pptx import Presentation
 import json
 import io
 from PIL import Image
+import time  # <--- 引入时间库，用于限速
 
 # --- 页面配置 ---
 st.set_page_config(page_title="智讲 SmartPresenter Pro", layout="wide", page_icon="🎤")
@@ -11,30 +12,26 @@ st.set_page_config(page_title="智讲 SmartPresenter Pro", layout="wide", page_i
 # --- 侧边栏 ---
 with st.sidebar:
     st.title("🎙️ 智讲 Pro")
-    st.caption("自适应模型加载版")
+    st.caption("防限流稳定版")
     st.divider()
     
-    # 1. 输入 API Key
     api_key = st.text_input("🔑 Google API Key", type="password")
     
-    # 2. 自动获取可用模型 (核心修复)
+    # 自动获取可用模型
     available_models = []
     if api_key:
         try:
             genai.configure(api_key=api_key)
-            # 动态向 Google 询问有哪些模型可用
             all_models = genai.list_models()
             for m in all_models:
-                # 只保留支持内容生成的模型
                 if 'generateContent' in m.supported_generation_methods:
                     available_models.append(m.name)
             st.success(f"✅ 已加载 {len(available_models)} 个可用模型")
         except Exception as e:
             st.error(f"❌ Key 验证失败: {e}")
 
-    # 3. 模型选择下拉菜单
     if available_models:
-        # 智能预选：优先找 flash 或 pro
+        # 智能预选
         default_index = 0
         for i, name in enumerate(available_models):
             if "flash" in name and "1.5" in name:
@@ -42,22 +39,19 @@ with st.sidebar:
                 break
         
         selected_model = st.selectbox(
-            "👇 请选择一个模型 (Google 官方列表):",
+            "👇 选择模型 (推荐 Flash):",
             available_models,
             index=default_index
         )
     else:
-        # 兜底选项
-        selected_model = st.selectbox(
-            "模型列表 (请输入 Key 加载):",
-            ["models/gemini-1.5-flash", "models/gemini-pro"]
-        )
+        selected_model = st.selectbox("模型列表:", ["models/gemini-1.5-flash"])
+
+    st.info("💡 提示：为防止 429 限流报错，每页分析将自动间隔 5 秒。")
 
 # --- 核心逻辑 ---
 def analyze_ppt(uploaded_file, api_key, model_name):
     genai.configure(api_key=api_key)
     
-    # 直接使用列表中选中的真实名字，不再猜测
     model = genai.GenerativeModel(
         model_name,
         generation_config={"response_mime_type": "application/json"}
@@ -71,17 +65,16 @@ def analyze_ppt(uploaded_file, api_key, model_name):
     total_slides = len(prs.slides)
 
     for i, slide in enumerate(prs.slides):
-        status_text.text(f"🚀 正在分析第 {i+1}/{total_slides} 页 | 使用引擎: {model_name}")
+        status_text.text(f"🚀 正在分析第 {i+1}/{total_slides} 页 (模型: {model_name})")
         progress_bar.progress((i + 1) / total_slides)
 
-        # 提取文本
+        # --- 1. 提取内容 ---
         text_runs = []
         for shape in slide.shapes:
             if hasattr(shape, "text"):
                 text_runs.append(shape.text)
         slide_text = "\n".join(text_runs)
 
-        # 提取图片
         slide_image = None
         for shape in slide.shapes:
             if shape.shape_type == 13: 
@@ -92,7 +85,7 @@ def analyze_ppt(uploaded_file, api_key, model_name):
                 except:
                     pass
 
-        # Prompt
+        # --- 2. 构造 Prompt ---
         prompt = """
         Analyze this slide. Output valid JSON:
         {
@@ -115,6 +108,7 @@ def analyze_ppt(uploaded_file, api_key, model_name):
         else:
             inputs.append("(No image)")
 
+        # --- 3. 调用 AI (带重试机制) ---
         try:
             response = model.generate_content(inputs)
             text = response.text.strip()
@@ -122,12 +116,18 @@ def analyze_ppt(uploaded_file, api_key, model_name):
             data = json.loads(text)
             data['index'] = i + 1
             results.append(data)
+            
         except Exception as e:
-            # 如果选中的模型不支持 JSON，做个提示
-            if "400" in str(e) and "JSON" in str(e):
-                st.warning(f"第 {i+1} 页：当前模型 {model_name} 可能不支持 JSON 模式，建议换一个带 1.5 的模型。")
+            err_msg = str(e)
+            if "429" in err_msg:
+                st.warning(f"第 {i+1} 页触发限流，正在冷却...")
+                time.sleep(10) # 遇到限流多睡一会
             else:
                 st.error(f"第 {i+1} 页出错: {e}")
+        
+        # --- 4. 关键：主动限速 (防止 429) ---
+        # 免费版每分钟限制 15 次请求，所以每次请求后休息 4-5 秒是安全的
+        time.sleep(4) 
                 
     progress_bar.empty()
     status_text.empty()
@@ -137,8 +137,8 @@ def analyze_ppt(uploaded_file, api_key, model_name):
 uploaded_file = st.file_uploader("📂 上传 PPTX 文件", type=['pptx'])
 
 if uploaded_file and api_key and available_models:
-    if st.button("🚀 开始分析"):
-        with st.spinner("AI 正在思考..."):
+    if st.button("🚀 开始分析 (慢速稳定版)"):
+        with st.spinner("AI 正在思考 (已开启防限流模式)..."):
             results = analyze_ppt(uploaded_file, api_key, selected_model)
             st.session_state['results'] = results
 
