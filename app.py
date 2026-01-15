@@ -21,15 +21,15 @@ def analyze_ppt(uploaded_file, api_key):
     genai.configure(api_key=api_key)
     
     # 使用支持 JSON Mode 的模型
-model = genai.GenerativeModel(
-    'gemini-1.5-pro', 
-    generation_config={"response_mime_type": "application/json"}
-)
+model = genai.GenerativeModel(    # 第 24 行
+        'gemini-1.5-pro',
+        generation_config={"response_mime_type": "application/json"}
+    )
 
-    prs = Presentation(uploaded_file)
-    results = []
-    
-    progress_bar = st.progress(0)
+    prs = Presentation(uploaded_file) # 第 29 行（这里要和上面的 model 对齐！）
+    results = []                      # 第 30 行（也要对齐）
+
+    progress_bar = st.progress(0)     # 第 32 行（也要对齐）
     total_slides = len(prs.slides)
 
     for i, slide in enumerate(prs.slides):
@@ -128,3 +128,4 @@ if 'results' in st.session_state:
 elif uploaded_file and not api_key:
 
     st.warning("请在左侧侧边栏输入 API Key 以继续。")
+
