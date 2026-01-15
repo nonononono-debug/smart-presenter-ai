@@ -20,17 +20,21 @@ with st.sidebar:
 def analyze_ppt(uploaded_file, api_key):
     genai.configure(api_key=api_key)
     
-    # 使用支持 JSON Mode 的模型
-model = genai.GenerativeModel(    # 第 24 行
-    'gemini-1.5-pro',
-    generation_config={"response_mime_type": "application/json"}
+    # 使用支持 JSON Mode 的模型 (注意缩进：4个空格)
+    model = genai.GenerativeModel(
+        'gemini-1.5-pro',
+        generation_config={"response_mime_type": "application/json"}
     )
 
-prs = Presentation(uploaded_file) 
-results = []                      
-progress_bar = st.progress(0)     
-total_slides = len(prs.slides)
-for i, slide in enumerate(prs.slides):
+    # 修复点：这里不仅删除了中文括号，还对齐了缩进 (4个空格)
+    prs = Presentation(uploaded_file)
+    results = []
+    
+    progress_bar = st.progress(0)
+    total_slides = len(prs.slides)
+
+    for i, slide in enumerate(prs.slides):
+        # ... (后面的代码保持原样即可)
     # 更新进度条
     progress_bar.progress((i + 1) / total_slides, text=f"正在分析第 {i+1}/{total_slides} 页...")
 
@@ -126,6 +130,7 @@ if 'results' in st.session_state:
 elif uploaded_file and not api_key:
 
     st.warning("请在左侧侧边栏输入 API Key 以继续。")
+
 
 
 
