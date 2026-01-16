@@ -81,3 +81,37 @@ def analyze_slide_content(model, slide, index, status_callback=None):
     response = generate_with_retry(model, inputs, index, status_callback)
     txt = response.text.replace("```json", "").replace("```", "").strip()
     return json.loads(txt)
+# ... (保留上面的 import 和之前的函数，不要删)
+
+# --- 4. 新增：全局逻辑复盘 ---
+def analyze_presentation_logic(model, all_slides_data):
+    """
+    将所有页面的分析结果汇总，让 AI 进行全篇逻辑诊断。
+    """
+    # 1. 把分散的页面信息拼接成一个长文本
+    context_text = "Presentation Structure:\n"
+    for slide in all_slides_data:
+        context_text += f"- Slide {slide['index']}: {slide['visual_summary']}\n"
+        context_text += f"  Key Point: {slide['knowledge_extension']['entity']}\n"
+    
+    # 2. 构造“总架构师” Prompt
+    prompt = """
+    You are a Senior Presentation Consultant. 
+    Review the structure of this presentation based on the summaries of each slide below.
+    
+    Output valid JSON only:
+    {
+        "executive_summary": "A powerful 2-sentence summary of the entire deck",
+        "logic_diagnosis": "Analyze the narrative flow. Is it coherent? Any gaps?",
+        "strengths": "What is done well?",
+        "weaknesses": "What needs improvement?",
+        "closing_remark": "A strong closing sentence for the speaker to end the presentation"
+    }
+    """
+    
+    # 3. 调用 AI (复用重试机制)
+    # 这里的 slide_index 传 0 或 -1 表示这是全局任务
+    response = generate_with_retry(model, [prompt, context_text], slide_index=0)
+    
+    txt = response.text.replace("```json", "").replace("```", "").strip()
+    return json.loads(txt)
