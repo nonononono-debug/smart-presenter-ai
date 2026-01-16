@@ -81,8 +81,41 @@ if uploaded_file and api_key and available_models:
         status_box.success("🎉 完成！")
         progress_bar.progress(1.0)
 
+# ... (前面的代码保持不变)
+
 elif st.session_state['results']:
     st.divider()
+    
+    # --- 新增功能：生成下载内容 ---
+    def generate_report(results):
+        report = "# 🎙️ 智讲 SmartPresenter 分析报告\n\n"
+        for slide in results:
+            report += f"## 第 {slide['index']} 页\n"
+            report += f"**视觉摘要**: {slide.get('visual_summary', 'N/A')}\n\n"
+            report += "### 🗣️ 演讲稿 (标准版)\n"
+            report += f"{slide['scripts']['standard']}\n\n"
+            report += "### 💡 知识扩展\n"
+            report += f"**{slide['knowledge_extension']['entity']}**: {slide['knowledge_extension']['trivia']}\n"
+            report += "---\n\n"
+        return report
+
+    # 准备下载数据
+    report_text = generate_report(st.session_state['results'])
+    
+    # 下载按钮布局
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.success(f"🎉 分析完成！共生成 {len(st.session_state['results'])} 页讲稿。")
+    with col2:
+        st.download_button(
+            label="📥 下载完整报告 (.md)",
+            data=report_text,
+            file_name="smart_presenter_report.md",
+            mime="text/markdown"
+        )
+
+    # 结果回显
     for data in st.session_state['results']:
-        with st.expander(f"第 {data['index']} 页"):
-            st.write(data['scripts']['standard'])
+        with st.expander(f"✅ 第 {data['index']} 页 | {data.get('visual_summary')}"):
+            st.markdown(f"**演讲稿**: {data['scripts']['standard']}")
+            st.info(f"💡 {data['knowledge_extension']['trivia']}")
